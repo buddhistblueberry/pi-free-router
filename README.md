@@ -97,6 +97,11 @@ Add keyed free tiers to unlock tool-calling and better models:
 `/reload` in Pi and re-select the model.
 
 `strategy`: `priority` (requested provider first, then rest), `round-robin`, `random`.
+`cooldownMs`: how long (ms) a failed provider is skipped before retry (default 60000).
+
+A keyed **Groq** provider (`fr-groq-70b`, `supportsTools: true`) ships **disabled** in the
+default config. To enable tool-calling on a faster model, set `GROQ_API_KEY` and flip
+`"enabled": true` on that entry, then `/reload` in Pi.
 
 ---
 
@@ -114,12 +119,19 @@ curl -s http://127.0.0.1:8731/v1/chat/completions \
 
 ---
 
+## Resilience
+
+- **Circuit breaker / cooldown**: a provider that fails (429 / 5xx / timeout / network /
+  error-as-200) is skipped for `cooldownMs` (default 60s) and retried afterwards. Live state:
+  `curl http://127.0.0.1:8731/v1/stats` or the in-Pi `/free-router-status` command.
+- **Fallback**: the next provider in the pool is tried automatically — you never see the error.
+
 ## Limitations (vs full OmniRoute)
 
 Intentionally out of scope for v1 (these are what needed native builds / are overkill):
 - No `better-sqlite3` dashboard, MITM/TPROXY, TLS JA3 stealth, Electron, or multi-account quota-share.
-- Mid-stream fallback is impossible (a provider can't be swapped after tokens start); we
-  validate the first chunk, then stream. A mid-stream failure surfaces an error Pi retries.
+- Mid-stream fallback is impossible (a provider can't be swapped after tokens start); a
+  mid-stream failure surfaces an error Pi retries.
 - Most free models lack extended thinking → registered with `reasoning: false`.
 - Tool-call support is per-provider (`supportsTools`); non-tool providers have `tools` stripped.
 - **Upstream calls are made non-streaming and re-emitted as SSE to Pi.** This dodges a
@@ -129,8 +141,8 @@ Intentionally out of scope for v1 (these are what needed native builds / are ove
 
 ## Roadmap
 - [ ] JSON-file usage/quota tracking + "free tokens remaining" in status
-- [ ] Circuit breaker / key cooldown on 429
-- [ ] More routing strategies + health probes
+- [x] Circuit breaker / key cooldown on failure
+- [x] Routing strategies: `priority` / `round-robin` / `random`
 - [ ] Optional prompt compression (dedup/truncate tool outputs) before forwarding
 
 ## License

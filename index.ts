@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createGateway, type ProviderEntry } from "./gateway";
+import { createGateway, type GatewayHandle, type ProviderEntry } from "./gateway";
 import { loadConfig, CONFIG_PATH } from "./config";
 
 /**
@@ -39,7 +39,7 @@ export default function (pi: ExtensionAPI) {
     models,
   });
 
-  let handle: { close(): void } | null = null;
+  let handle: GatewayHandle | null = null;
 
   pi.on("session_start", async (_e, ctx) => {
     if (handle) return; // already running in this process
@@ -81,12 +81,17 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("free-router-status", {
     description: "Show Free Router gateway URL and provider pool",
     handler: async (_args, ctx) => {
+      const stats = handle?.stats?.() ?? [];
       const lines = config.providers
         .filter((p) => p.enabled)
-        .map(
-          (p: ProviderEntry) =>
-            `• ${p.piModel}  →  ${p.label}  [${p.model}]  tools:${p.supportsTools ? "yes" : "no"}`,
-        );
+        .map((p: ProviderEntry) => {
+          const s = stats.find((x) => x.id === p.id);
+          const cool =
+            s && s.cooling && s.until
+              ? `  ❄ cooling ${Math.ceil((s.until - Date.now()) / 1000)}s`
+              : "";
+          return `• ${p.piModel}  →  ${p.label}  [${p.model}]  tools:${p.supportsTools ? "yes" : "no"}${cool}`;
+        });
       const body =
         `Free Router @ http://127.0.0.1:${port}/v1\n` +
         `strategy: ${config.strategy}\n` +

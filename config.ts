@@ -17,6 +17,7 @@ export function defaultConfig(): GatewayConfig {
   return {
     port: 8731,
     strategy: "priority",
+    cooldownMs: 60000,
     providers: [
       {
         id: "pollinations",
@@ -29,6 +30,21 @@ export function defaultConfig(): GatewayConfig {
         maxTokens: 4096,
         supportsTools: false,
         enabled: true,
+      },
+      {
+        // Keyed example — enable after setting $GROQ_API_KEY to get tool-calling
+        // and a much faster model. Disabled by default so the keyless default
+        // keeps working with zero setup.
+        id: "groq",
+        label: "Groq (keyed, tools)",
+        baseUrl: "https://api.groq.com/openai",
+        apiKey: "$GROQ_API_KEY",
+        model: "llama-3.3-70b-versatile",
+        piModel: "fr-groq-70b",
+        contextWindow: 128000,
+        maxTokens: 4096,
+        supportsTools: true,
+        enabled: false,
       },
     ],
   };

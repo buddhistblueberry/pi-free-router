@@ -4,7 +4,8 @@ import http from "node:http";
  * Free Router gateway — a tiny, dependency-free, OpenAI-compatible proxy.
  *
  * It accepts Pi's OpenAI-completions requests on localhost and fans them out
- * across a pool of (mostly free-tier) providers with automatic fallback.
+ * across a pool of (mostly free-tier) providers with automatic fallback and a
+ * per-provider circuit breaker (cooldown after failures).
  *
  * This module has NO dependency on Pi, so it can be tested standalone with
  * `bun smoke.ts` without a running Pi session.
@@ -32,12 +33,24 @@ export type Strategy = "priority" | "round-robin" | "random";
 export interface GatewayConfig {
   port: number;
   strategy: Strategy;
+  /** How long (ms) a failed provider is skipped before being retried. */
+  cooldownMs?: number;
   providers: ProviderEntry[];
+}
+
+export interface ProviderStat {
+  id: string;
+  label: string;
+  enabled: boolean;
+  cooling: boolean;
+  /** Epoch ms until which the provider is cooling, or null. */
+  until: number | null;
 }
 
 export interface GatewayHandle {
   port: number;
   close(): void;
+  stats(): ProviderStat[];
 }
 
 function chatUrl(base: string): string {
@@ -49,22 +62,54 @@ export function createGateway(config: GatewayConfig) {
   const byPiModel = new Map<string, ProviderEntry>();
   for (const p of enabled()) byPiModel.set(p.piModel, p);
 
+  const cooldownMs = config.cooldownMs ?? 60_000;
+  const cooldownUntil = new Map<string, number>();
+
   let server: http.Server | null = null;
   let rr = 0;
+
+  const isCooling = (id: string): boolean => {
+    const until = cooldownUntil.get(id);
+    return until !== undefined && until > Date.now();
+  };
+  const markCooled = (p: ProviderEntry) => {
+    cooldownUntil.set(p.id, Date.now() + cooldownMs);
+  };
+  const recovered = (p: ProviderEntry) => {
+    cooldownUntil.delete(p.id);
+  };
+
+  function stats(): ProviderStat[] {
+    return config.providers.map((p) => {
+      const until = cooldownUntil.get(p.id) ?? null;
+      return {
+        id: p.id,
+        label: p.label,
+        enabled: p.enabled,
+        cooling: until !== null && until > Date.now(),
+        until,
+      };
+    });
+  }
 
   /** Build the ordered candidate list for a requested Pi model. */
   function order(piModel: string): ProviderEntry[] {
     const list = enabled();
+    let base: ProviderEntry[];
     const req = byPiModel.get(piModel);
     if (config.strategy === "round-robin" && list.length) {
       const start = rr++ % list.length;
-      return [...list.slice(start), ...list.slice(0, start)];
+      base = [...list.slice(start), ...list.slice(0, start)];
+    } else if (config.strategy === "random" && list.length) {
+      base = [...list].sort(() => Math.random() - 0.5);
+    } else if (req) {
+      base = [req, ...list.filter((p) => p !== req)];
+    } else {
+      base = list;
     }
-    if (config.strategy === "random" && list.length) {
-      return [...list].sort(() => Math.random() - 0.5);
-    }
-    if (req) return [req, ...list.filter((p) => p !== req)];
-    return list;
+    // Skip providers in cooldown; but never hard-fail if ALL are cooling.
+    const usable = base.filter((p) => !isCooling(p.id));
+    return usable.length ? usable : base;
   }
 
   async function handleChat(
@@ -110,8 +155,11 @@ export function createGateway(config: GatewayConfig) {
           signal: AbortSignal.timeout(15000),
         });
 
-        // 429 / 5xx → try the next provider.
-        if (!r.ok) continue;
+        // 429 / 5xx → cool down + try the next provider.
+        if (!r.ok) {
+          markCooled(prov);
+          continue;
+        }
 
         // Always read upstream non-streaming (some runtimes' fetch streaming
         // hangs on certain providers). We re-emit SSE to Pi below.
@@ -119,9 +167,16 @@ export function createGateway(config: GatewayConfig) {
         try {
           data = await r.json();
         } catch {
+          markCooled(prov);
           continue; // non-JSON body → unusable
         }
-        if (data && data.error) continue; // error-as-200
+        if (data && data.error) {
+          markCooled(prov);
+          continue; // error-as-200
+        }
+
+        // Success — clear any cooldown and respond.
+        recovered(prov);
 
         if (!piWantsStream) {
           res.writeHead(200, {
@@ -179,14 +234,13 @@ export function createGateway(config: GatewayConfig) {
             );
           });
         }
-        res.write(
-          chunk({}, (choice.finish_reason as string) ?? "stop"),
-        );
+        res.write(chunk({}, (choice.finish_reason as string) ?? "stop"));
         res.write("data: [DONE]\n\n");
         res.end();
         return;
       } catch {
-        // Network error / timeout / abort → next provider.
+        // Network error / timeout / abort → cool down + next provider.
+        markCooled(prov);
         continue;
       }
     }
@@ -229,6 +283,12 @@ export function createGateway(config: GatewayConfig) {
         return;
       }
 
+      if (req.method === "GET" && (url === "/v1/stats" || url === "/stats")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ cooldownMs, providers: stats() }));
+        return;
+      }
+
       if (url === "/" || url === "/healthz") {
         res.writeHead(200, { "content-type": "text/plain" });
         res.end("free-router ok");
@@ -246,7 +306,11 @@ export function createGateway(config: GatewayConfig) {
       // Another Pi session likely already owns this port — that's fine, the
       // registered provider will route to it.
       if (err?.code === "EADDRINUSE") {
-        return { port: config.port, close() {} } as GatewayHandle;
+        return {
+          port: config.port,
+          close() {},
+          stats: () => [],
+        } as GatewayHandle;
       }
       throw err;
     });
@@ -259,6 +323,7 @@ export function createGateway(config: GatewayConfig) {
         } catch {}
         server = null;
       },
+      stats,
     };
   }
 
