@@ -17,18 +17,31 @@ export default function (pi: ExtensionAPI) {
   const config = loadConfig();
   const port = config.port || 8731;
 
-  // Pi-facing model catalog derived from the pool.
-  const models = config.providers
-    .filter((p) => p.enabled)
-    .map((p) => ({
-      id: p.piModel,
-      name: p.label,
-      reasoning: false,
-      input: ["text"] as ("text" | "image")[],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: p.contextWindow,
-      maxTokens: p.maxTokens,
-    }));
+  // Pi-facing model catalog derived from the pool, plus one unified "auto" model
+  // that fans across ALL enabled providers (the OmniRoute `auto` equivalent).
+  const unified = {
+    id: "fr-auto",
+    name: "Free Router (auto — all providers)",
+    reasoning: false,
+    input: ["text"] as ("text" | "image")[],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+    maxTokens: 4096,
+  };
+  const models = [
+    unified,
+    ...config.providers
+      .filter((p) => p.enabled)
+      .map((p) => ({
+        id: p.piModel,
+        name: p.label,
+        reasoning: false,
+        input: ["text"] as ("text" | "image")[],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: p.contextWindow,
+        maxTokens: p.maxTokens,
+      })),
+  ];
 
   pi.registerProvider("free-router", {
     name: "Free Router",

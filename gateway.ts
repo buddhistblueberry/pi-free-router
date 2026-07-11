@@ -93,7 +93,7 @@ export function createGateway(config: GatewayConfig) {
   }
 
   /** Build the ordered candidate list for a requested Pi model. */
-  function order(piModel: string): ProviderEntry[] {
+  function order(piModel: string, wantsTools = false): ProviderEntry[] {
     const list = enabled();
     let base: ProviderEntry[];
     const req = byPiModel.get(piModel);
@@ -106,6 +106,14 @@ export function createGateway(config: GatewayConfig) {
       base = [req, ...list.filter((p) => p !== req)];
     } else {
       base = list;
+    }
+    // Unified model (no specific provider requested) + tool-using request →
+    // prefer providers that actually support tools.
+    if (wantsTools && !req) {
+      base = [
+        ...base.filter((p) => p.supportsTools),
+        ...base.filter((p) => !p.supportsTools),
+      ];
     }
     // Skip providers in cooldown; but never hard-fail if ALL are cooling.
     const usable = base.filter((p) => !isCooling(p.id));
@@ -126,7 +134,8 @@ export function createGateway(config: GatewayConfig) {
       return;
     }
 
-    const candidates = order(parsed.model);
+    const wantsTools = Array.isArray(parsed.tools) && parsed.tools.length > 0;
+    const candidates = order(parsed.model, wantsTools);
     if (!candidates.length) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: `unknown model ${parsed.model}` }));

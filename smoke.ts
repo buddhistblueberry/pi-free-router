@@ -4,8 +4,10 @@
  *
  *   bun smoke.ts
  *   # in another shell:
- *   curl http://127.0.0.1:8731/v1/chat/completions -d '{"model":"fr-broken","messages":[{"role":"user","content":"hi"}],"stream":false}'
- *   curl http://127.0.0.1:8731/v1/stats
+ *   #   unified model — fans across ALL enabled providers:
+ *   curl -s http://127.0.0.1:8731/v1/chat/completions -H 'content-type: application/json' \
+ *     -d '{"model":"fr-auto","messages":[{"role":"user","content":"hi"}],"stream":false}'
+ *   curl -s http://127.0.0.1:8731/v1/stats
  */
 import { createGateway, type GatewayConfig } from "./gateway";
 
@@ -44,7 +46,7 @@ const cfg: GatewayConfig = {
 
 const g = await createGateway(cfg).start();
 console.log(`[smoke] gateway up on 127.0.0.1:${g.port}`);
-console.log(`[smoke] request model "fr-broken" (broken first) → should fall back to Pollinations and cool down broken`);
+console.log(`[smoke] request model "fr-auto" (unified) → should fan out, fall back broken→pollinations`);
 
 const stop = () => {
   g.close();

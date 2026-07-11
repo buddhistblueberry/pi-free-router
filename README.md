@@ -129,6 +129,12 @@ env var and flipping `"enabled": true` in `~/.pi/agent/free-router.json`, then `
 > Model ids change over time — verify on each provider's dashboard. `examples/free-router.json`
 > shows a ready-to-enable subset.
 
+### Unified `fr-auto` model
+There is also a single **`fr-auto`** model. Select it and the gateway fans the request
+across **all enabled providers** (OmniRoute's `auto` equivalent) — preferring tool-capable
+providers when the request includes tools, and falling back on any failure/rate-limit. Use
+`fr-auto` as your one default instead of picking a specific provider.
+
 ## Development / testing (no Pi needed)
 
 The gateway is dependency-free and Pi-agnostic, so it can be tested standalone:
