@@ -115,6 +115,18 @@ export function defaultConfig(): GatewayConfig {
         enabled: false,
       },
       {
+        id: "gemini",
+        label: "Google AI Studio (Gemini, tools)",
+        baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+        apiKey: "$GOOGLE_API_KEY",
+        model: "gemini-2.5-flash",
+        piModel: "fr-gemini-flash",
+        contextWindow: 128000,
+        maxTokens: 8192,
+        supportsTools: true,
+        enabled: false,
+      },
+      {
         id: "siliconflow",
         label: "SiliconFlow (keyed, tools)",
         baseUrl: "https://api.siliconflow.cn/v1",
