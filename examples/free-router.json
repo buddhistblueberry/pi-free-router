@@ -1,0 +1,55 @@
+{
+  "port": 8731,
+  "strategy": "priority",
+  "cooldownMs": 60000,
+  "providers": [
+    {
+      "id": "pollinations",
+      "label": "Pollinations (keyless)",
+      "baseUrl": "https://text.pollinations.ai/openai",
+      "apiKey": "",
+      "model": "openai-fast",
+      "piModel": "fr-pollinations-fast",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "supportsTools": false,
+      "enabled": true
+    },
+    {
+      "id": "groq",
+      "label": "Groq (keyed, tools)",
+      "baseUrl": "https://api.groq.com/openai",
+      "apiKey": "$GROQ_API_KEY",
+      "model": "llama-3.3-70b-versatile",
+      "piModel": "fr-groq-70b",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "supportsTools": true,
+      "enabled": true
+    },
+    {
+      "id": "deepseek",
+      "label": "DeepSeek (keyed, tools)",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "$DEEPSEEK_API_KEY",
+      "model": "deepseek-chat",
+      "piModel": "fr-deepseek-chat",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "supportsTools": true,
+      "enabled": true
+    },
+    {
+      "id": "openrouter",
+      "label": "OpenRouter (keyed, tools, aggregator)",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "$OPENROUTER_API_KEY",
+      "model": "openai/gpt-4o-mini",
+      "piModel": "fr-openrouter-gpt4o-mini",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "supportsTools": true,
+      "enabled": true
+    }
+  ]
+}

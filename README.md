@@ -105,6 +105,30 @@ default config. To enable tool-calling on a faster model, set `GROQ_API_KEY` and
 
 ---
 
+## Bundled free providers
+
+The default config ships a catalog of free-tier providers (curated from
+[OmniRoute's provider reference](https://github.com/diegosouzapw/OmniRoute)). Only
+**Pollinations** is enabled (keyless). Activate the rest by setting the matching
+env var and flipping `"enabled": true` in `~/.pi/agent/free-router.json`, then `/reload`.
+
+| Provider | Pi model | Env key | Tools | Notes |
+|----------|----------|---------|-------|-------|
+| Pollinations | `fr-pollinations-fast` | — (keyless) | no | works out of the box |
+| Groq | `fr-groq-70b` | `$GROQ_API_KEY` | yes | fast |
+| DeepSeek | `fr-deepseek-chat` | `$DEEPSEEK_API_KEY` | yes | 5M free tokens |
+| Together | `fr-together-llama33` | `$TOGETHER_API_KEY` | yes | |
+| OpenRouter | `fr-openrouter-gpt4o-mini` | `$OPENROUTER_API_KEY` | yes | aggregator, `:free` models |
+| Cerebras | `fr-cerebras-llama33` | `$CEREBRAS_API_KEY` | yes | 1M tok/day |
+| NVIDIA NIM | `fr-nim-llama33` | `$NVIDIA_NIM_API_KEY` | no | |
+| DeepInfra | `fr-deepinfra-llama33` | `$DEEPINFRA_API_KEY` | yes | |
+| Mistral | `fr-mistral-small` | `$MISTRAL_API_KEY` | yes | |
+| SiliconFlow | `fr-siliconflow-qwen` | `$SILICONFLOW_API_KEY` | yes | free after KYC |
+| LLM7 | `fr-llm7` | — (keyless) | no | no signup |
+
+> Model ids change over time — verify on each provider's dashboard. `examples/free-router.json`
+> shows a ready-to-enable subset.
+
 ## Development / testing (no Pi needed)
 
 The gateway is dependency-free and Pi-agnostic, so it can be tested standalone:
