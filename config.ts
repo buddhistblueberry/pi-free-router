@@ -19,18 +19,6 @@ export function defaultConfig(): GatewayConfig {
     cooldownMs: 60000,
     providers: [
       {
-        id: "pollinations",
-        label: "Pollinations (keyless)",
-        baseUrl: "https://text.pollinations.ai/openai",
-        apiKey: "",
-        model: "openai-fast",
-        piModel: "fr-pollinations-fast",
-        contextWindow: 128000,
-        maxTokens: 4096,
-        supportsTools: false,
-        enabled: true,
-      },
-      {
         id: "groq",
         label: "Groq (keyed, tools)",
         baseUrl: "https://api.groq.com/openai",

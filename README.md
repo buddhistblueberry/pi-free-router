@@ -108,13 +108,12 @@ default config. To enable tool-calling on a faster model, set `GROQ_API_KEY` and
 ## Bundled free providers
 
 The default config ships a catalog of free-tier providers (curated from
-[OmniRoute's provider reference](https://github.com/diegosouzapw/OmniRoute)). Only
-**Pollinations** is enabled (keyless). Activate the rest by setting the matching
-env var and flipping `"enabled": true` in `~/.pi/agent/free-router.json`, then `/reload`.
+[OmniRoute's provider reference](https://github.com/diegosouzapw/OmniRoute)). None are
+enabled by default — bring your own key(s). Activate a provider by setting the matching
+env var (or pasting the key) and flipping `"enabled": true` in `~/.pi/agent/free-router.json`, then `/reload`.
 
 | Provider | Pi model | Env key | Tools | Notes |
 |----------|----------|---------|-------|-------|
-| Pollinations | `fr-pollinations-fast` | — (keyless) | no | works out of the box |
 | Groq | `fr-groq-70b` | `$GROQ_API_KEY` | yes | fast |
 | DeepSeek | `fr-deepseek-chat` | `$DEEPSEEK_API_KEY` | yes | 5M free tokens |
 | Together | `fr-together-llama33` | `$TOGETHER_API_KEY` | yes | |
