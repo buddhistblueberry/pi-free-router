@@ -1,7 +1,7 @@
 {
   "name": "pi-free-router",
-  "version": "0.1.0",
-  "description": "Free-tier API key wrapper for Pi — an OmniRoute-style local gateway, shipped as a Pi extension with zero native dependencies.",
+  "version": "0.2.0",
+  "description": "OmniRoute-style free-tier LLM API gateway for Pi — routing strategies, circuit breaker, combo fallback, SSE streaming. Zero native deps.",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -11,7 +11,11 @@
     "free-tier",
     "llm-gateway",
     "ai",
-    "proxy"
+    "proxy",
+    "router",
+    "circuit-breaker",
+    "fallback",
+    "openai-compatible"
   ],
   "pi": {
     "extensions": ["./index.ts"]

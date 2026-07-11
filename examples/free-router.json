@@ -2,18 +2,28 @@
   "port": 8731,
   "strategy": "priority",
   "cooldownMs": 60000,
+  "circuitBreakerThreshold": 5,
+  "cooldownByKind": {
+    "rate_limit": 60000,
+    "quota_exhausted": 300000,
+    "transient": 30000
+  },
+  "globalFallbackProvider": "llm7",
+  "healthCheckIntervalMs": 60000,
   "providers": [
     {
-      "id": "pollinations",
-      "label": "Pollinations (keyless)",
-      "baseUrl": "https://text.pollinations.ai/openai",
+      "id": "llm7",
+      "label": "LLM7 (keyless, no signup)",
+      "baseUrl": "https://api.llm7.io/v1",
       "apiKey": "",
-      "model": "openai-fast",
-      "piModel": "fr-pollinations-fast",
+      "model": "llama-3.3-70b",
+      "piModel": "fr-llm7",
       "contextWindow": 128000,
       "maxTokens": 4096,
       "supportsTools": false,
-      "enabled": true
+      "enabled": true,
+      "category": "keyless",
+      "freeTierNotes": "~150M tokens/mo, no signup needed"
     },
     {
       "id": "groq",
@@ -25,7 +35,8 @@
       "contextWindow": 128000,
       "maxTokens": 4096,
       "supportsTools": true,
-      "enabled": true
+      "enabled": true,
+      "category": "free"
     },
     {
       "id": "deepseek",
@@ -37,7 +48,47 @@
       "contextWindow": 128000,
       "maxTokens": 4096,
       "supportsTools": true,
-      "enabled": true
+      "enabled": true,
+      "category": "free"
+    },
+    {
+      "id": "gemini",
+      "label": "Google AI Studio (Gemini, tools)",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "apiKey": "$GOOGLE_API_KEY",
+      "model": "gemini-2.5-flash",
+      "piModel": "fr-gemini-flash",
+      "contextWindow": 128000,
+      "maxTokens": 8192,
+      "supportsTools": true,
+      "enabled": true,
+      "category": "free"
+    },
+    {
+      "id": "mistral",
+      "label": "Mistral (keyed, tools)",
+      "baseUrl": "https://api.mistral.ai/v1",
+      "apiKey": "$MISTRAL_API_KEY",
+      "model": "mistral-small-latest",
+      "piModel": "fr-mistral-small",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "supportsTools": true,
+      "enabled": true,
+      "category": "free"
+    },
+    {
+      "id": "cerebras",
+      "label": "Cerebras (keyed, tools)",
+      "baseUrl": "https://api.cerebras.ai/v1",
+      "apiKey": "$CEREBRAS_API_KEY",
+      "model": "llama3.3-70b",
+      "piModel": "fr-cerebras-llama33",
+      "contextWindow": 128000,
+      "maxTokens": 4096,
+      "supportsTools": true,
+      "enabled": true,
+      "category": "free"
     },
     {
       "id": "openrouter",
@@ -49,7 +100,28 @@
       "contextWindow": 128000,
       "maxTokens": 4096,
       "supportsTools": true,
-      "enabled": true
+      "enabled": true,
+      "category": "aggregator"
+    }
+  ],
+  "combos": [
+    {
+      "name": "fr-auto",
+      "providerIds": ["llm7", "groq", "deepseek", "gemini", "mistral"],
+      "strategy": "priority",
+      "autoSelect": true
+    },
+    {
+      "name": "fr-combo-free-fast",
+      "providerIds": ["cerebras", "groq", "deepseek"],
+      "strategy": "priority",
+      "autoSelect": false
+    },
+    {
+      "name": "fr-combo-free-smart",
+      "providerIds": ["gemini", "mistral", "deepseek", "llm7"],
+      "strategy": "priority",
+      "autoSelect": false
     }
   ]
 }

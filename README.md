@@ -1,61 +1,116 @@
 # pi-free-router
 
-A **free-tier API key wrapper for Pi** — an [OmniRoute](https://github.com/diegosouzapw/OmniRoute)-style
-local gateway, shipped as a **Pi extension** with **zero native dependencies**.
+A **free-tier API gateway for Pi** — an [OmniRoute](https://github.com/diegosouzapw/OmniRoute)-style
+local LLM router, shipped as a **Pi extension** with **zero native dependencies**.
 
-> Why this exists: OmniRoute is great but pulls in native builds (e.g. `better-sqlite3`)
-> that fail to compile on Termux/Android. Pi already speaks the OpenAI Chat Completions
-> protocol, so the useful 10% — *one endpoint, many free providers, auto-fallback* — can be
-> a tiny pure-TypeScript gateway that runs **inside the extension process**. No separate
-> binary, no compilation.
+> **Why this exists:** OmniRoute aggregates ~237 providers with routing, circuit breakers, and
+> auto-fallback, but its native dependencies (`better-sqlite3`, etc.) fail to compile on
+> Termux/Android. This is the same architecture — minus the parts that need native builds —
+> running **inside the Pi extension process**. No separate binary, no compilation.
 
 ---
 
-## What it does
+## What makes it work (ported from OmniRoute)
+
+| Feature | What it does | OmniRoute origin |
+|---------|-------------|-----------------|
+| **Pluggable routing strategies** | `priority`, `round-robin`, `random`, `cost`, `latency`, `lkgp` | `routerStrategy.ts` |
+| **Circuit breaker** | Per-provider CLOSED→DEGRADED→OPEN→HALF_OPEN w/ exponential backoff | `circuitBreaker.ts` |
+| **Kind-aware cooldown** | Different cooldowns for rate_limit vs quota_exhausted vs transient | `cooldownByKind` |
+| **Retry-After respect** | Parses upstream `Retry-After` headers for precise cooldown | `cooldownAwareRetry.ts` |
+| **Combo system** | Named model chains with fallback (e.g. `fr-combo-free-smart`) | `combo.ts` |
+| **Global fallback** | Last-resort provider when all others fail | `chat.ts` globalFallbackModel |
+| **SSE pass-through** | True streaming pass-through instead of buffered re-emission | `streaming.ts` |
+| **Provider catalog** | 35+ free/ keyless providers curated from OmniRoute's 237 | `FREE_TIERS.md` |
+| **Health/stats** | `/v1/stats`, `/v1/health`, circuit breaker views | `resilience` API |
+| **Resilience tracing** | Each request logs its fallback chain and provider decisions | `resilienceTrace` |
+| **Zero native deps** | Pure `node:http` + `fetch` — no `better-sqlite3`, no compilation | — |
+
+---
+
+## Architecture
 
 ```
 Pi  ──OpenAI-completions HTTP──▶  127.0.0.1:8731/v1/chat/completions
                                    │
                                    ▼
-                      free-router gateway  (HTTP server inside the extension)
-                                   │  pi-model-id → upstream target
-                                   ▼  fallback on 429 / 5xx / hang
-        [Pollinations·keyless] → [Groq] → [Together] → [DeepSeek] → [OpenRouter] …
+                      free-router gateway (HTTP server inside the extension)
+                                   │
+                                   ├── Routing strategy (priority / round-robin / cost / etc.)
+                                   ├── Circuit breaker per provider (states + kind-aware cooldown)
+                                   ├── Combo resolution (named provider chains)
+                                   ├── SSE pass-through streaming
+                                   ├── Global fallback (last resort)
+                                   └── Health / stats endpoints
+                                   │
+                                   ▼
+        [LLM7·keyless] → [Groq·keyed] → [DeepSeek·keyed] → [Gemini·keyed] → …
+              (auto-fallback on 429 / 5xx / timeout / circuit open)
 ```
 
 Pi sees **one provider** (`free-router`) with many models. The gateway does the
-routing and fallback. That is the OmniRoute pattern, minus the parts that need
-native deps or are overkill.
+routing, circuit breaking, and fallback. That is the OmniRoute pattern.
 
-Works **out of the box with no API key** (default pool = keyless Pollinations).
+The default config ships with **keyless providers enabled** (LLM7, Pollinations)
+for zero-setup testing. Enable keyed providers by setting env vars and flipping
+`"enabled": true` in `~/.pi/agent/free-router.json`, then `/reload`.
 
 ---
 
-## Install (it "falls into Pi")
+## Quick start
 
-### Option A — clone into extensions (simplest)
+### Install
+
 ```bash
 git clone https://github.com/buddhistblueberry/pi-free-router \
   ~/.pi/agent/extensions/pi-free-router
 ```
-Then in Pi run `/reload`. The provider appears as **Free Router**; pick a model
-with `/model` (e.g. `fr-pollinations-fast`).
 
-### Option B — Pi package (git)
-Add to your `settings.json`:
-```json
-{ "packages": ["git:github.com/buddhistblueberry/pi-free-router"] }
+Then in Pi run `/reload`. The provider appears as **Free Router**.
+
+### First run (zero setup)
+
+The default config enables LLM7 and Pollinations (keyless) — just:
+
 ```
-Then `pi install`.
+/reload
+/model fr-auto
+```
 
----
+Then chat. The gateway fans across all enabled providers, falling back on failure.
 
-## Usage
+### Enable more providers
 
-1. Load it (`/reload` if cloned). On `session_start` the gateway binds `127.0.0.1:8731`.
-2. `/model` → choose a `Free Router` model (default: `fr-pollinations-fast`).
-3. Chat. If a provider is rate-limited or errors, the gateway silently retries the next one.
-4. `/free-router-status` shows the live pool and gateway URL.
+Edit `~/.pi/agent/free-router.json`, set env vars, flip `enabled: true`, then:
+
+```
+/free-router-reload
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/free-router-status` | Show gateway status, provider pool, circuit breakers, combos |
+| `/free-router-strategy <name>` | Switch routing strategy on the fly |
+| `/free-router-reset <id\|all>` | Reset circuit breaker for a provider |
+| `/free-router-reload` | Reload config from `free-router.json` |
+
+### Models
+
+| Model | What it does |
+|-------|-------------|
+| `fr-auto` | Fans across ALL enabled providers with fallback |
+| `fr-llm7` | LLM7 (keyless, no signup) |
+| `fr-pollinations-fast` | Pollinations (keyless, no signup) |
+| `fr-groq-70b` | Groq Llama 3.3 70B (needs `$GROQ_API_KEY`) |
+| `fr-deepseek-chat` | DeepSeek Chat (needs `$DEEPSEEK_API_KEY`) |
+| `fr-gemini-flash` | Google Gemini 2.5 Flash (needs `$GOOGLE_API_KEY`) |
+| `fr-auto-all` | Combo: all enabled providers (auto) |
+| `fr-combo-free-fast` | Combo: Groq Fast → Groq 70B → Cerebras → DeepSeek |
+| `fr-combo-free-smart` | Combo: Gemini → Mistral → DeepSeek → LLM7 |
+
+Plus many more — see the full catalog in `config.ts`.
 
 ---
 
@@ -67,112 +122,169 @@ Config lives at `~/.pi/agent/free-router.json` (auto-created from defaults on fi
 {
   "port": 8731,
   "strategy": "priority",
+  "cooldownMs": 60000,
+  "circuitBreakerThreshold": 5,
+  "cooldownByKind": {
+    "rate_limit": 60000,
+    "quota_exhausted": 300000,
+    "transient": 30000
+  },
+  "globalFallbackProvider": "llm7",
   "providers": [
     {
-      "id": "pollinations",
-      "label": "Pollinations (keyless)",
-      "baseUrl": "https://text.pollinations.ai/openai",
-      "apiKey": "",
-      "model": "openai-fast",
-      "piModel": "fr-pollinations-fast",
+      "id": "groq",
+      "label": "Groq (free tier, tools)",
+      "baseUrl": "https://api.groq.com/openai",
+      "apiKey": "$GROQ_API_KEY",
+      "model": "llama-3.3-70b-versatile",
+      "piModel": "fr-groq-70b",
       "contextWindow": 128000,
       "maxTokens": 4096,
-      "supportsTools": false,
-      "enabled": true
+      "supportsTools": true,
+      "enabled": true,
+      "category": "free",
+      "freeTierNotes": "~15M tokens/mo, 30 RPM"
+    }
+  ],
+  "combos": [
+    {
+      "name": "fr-combo-free-smart",
+      "providerIds": ["gemini", "mistral", "deepseek", "llm7"],
+      "strategy": "priority"
     }
   ]
 }
 ```
 
-Add keyed free tiers to unlock tool-calling and better models:
+### Provider catalog (curated from OmniRoute)
 
-| Provider   | baseUrl                              | Notes                                  |
-|------------|--------------------------------------|----------------------------------------|
-| Groq       | `https://api.groq.com/openai`        | fast, `supportsTools: true`            |
-| Together   | `https://api.together.xyz/v1`        | `supportsTools: true`                  |
-| DeepSeek   | `https://api.deepseek.com/v1`        | `supportsTools: true`                  |
-| OpenRouter | `https://openrouter.ai/api/v1`       | huge model catalog, free tier models   |
+The default config includes **35+ providers** from OmniRoute's catalog of 237.
+Only keyless ones are enabled by default. Full list in `config.ts`. Highlights:
 
-`apiKey` accepts an env reference (`"$GROQ_API_KEY"`) or a literal. After editing,
-`/reload` in Pi and re-select the model.
-
-`strategy`: `priority` (requested provider first, then rest), `round-robin`, `random`.
-`cooldownMs`: how long (ms) a failed provider is skipped before retry (default 60000).
-
-A keyed **Groq** provider (`fr-groq-70b`, `supportsTools: true`) ships **disabled** in the
-default config. To enable tool-calling on a faster model, set `GROQ_API_KEY` and flip
-`"enabled": true` on that entry, then `/reload` in Pi.
+| Provider | Pi model | Category | Free tier | Tools |
+|----------|----------|----------|-----------|-------|
+| LLM7 | `fr-llm7` | ✅ keyless | ~150M tok/mo | no |
+| Pollinations | `fr-pollinations-fast` | ✅ keyless | Free keyless | no |
+| FreeModel.dev | `fr-free-model` | ✅ keyless | $300 free credits | no |
+| Groq | `fr-groq-70b` | 🔑 keyed | ~15M tok/mo, fast | yes |
+| DeepSeek | `fr-deepseek-chat` | 🔑 keyed | 5M free signup | yes |
+| Gemini | `fr-gemini-flash` | 🔑 keyed | ~60M tok/mo, 128K ctx | yes |
+| Mistral | `fr-mistral-small` | 🔑 keyed | ~1B tok/mo free tier | yes |
+| Cerebras | `fr-cerebras-llama33` | 🔑 keyed | ~30M tok/mo, fast | yes |
+| Together | `fr-together-llama33` | 🔑 keyed | $25 free credits | yes |
+| OpenRouter | `fr-openrouter-gpt4o-mini` | 🔑 keyed | Free `:free` models | yes |
+| NVIDIA NIM | `fr-nim-llama33` | 🔑 keyed | 40 RPM, 70+ models | no |
+| DeepInfra | `fr-deepinfra-llama33` | 🔑 keyed | Free credits | yes |
+| SiliconFlow | `fr-siliconflow-qwen` | 🔑 keyed | Free after KYC | yes |
+| Cloudflare | `fr-cf-llama33` | 🔑 keyed | ~30M tok/mo | no |
+| GitHub Models | `fr-gh-models` | 🔑 keyed | ~18M tok/mo (closing) | yes |
+| API Airforce | `fr-airforce` | 🔑 keyed | 55 free models | no |
+| OpenAI | `fr-openai-mini` | 💳 paid | — | yes |
+| Anthropic | `fr-anthropic-sonnet` | 💳 paid | — | yes |
 
 ---
 
-## Bundled free providers
+## Routing strategies
 
-The default config ships a catalog of free-tier providers (curated from
-[OmniRoute's provider reference](https://github.com/diegosouzapw/OmniRoute)). None are
-enabled by default — bring your own key(s). Activate a provider by setting the matching
-env var (or pasting the key) and flipping `"enabled": true` in `~/.pi/agent/free-router.json`, then `/reload`.
+Use `/free-router-strategy <name>` to switch at runtime.
 
-| Provider | Pi model | Env key | Tools | Notes |
-|----------|----------|---------|-------|-------|
-| Groq | `fr-groq-70b` | `$GROQ_API_KEY` | yes | fast |
-| DeepSeek | `fr-deepseek-chat` | `$DEEPSEEK_API_KEY` | yes | 5M free tokens |
-| Together | `fr-together-llama33` | `$TOGETHER_API_KEY` | yes | |
-| OpenRouter | `fr-openrouter-gpt4o-mini` | `$OPENROUTER_API_KEY` | yes | aggregator, `:free` models |
-| Cerebras | `fr-cerebras-llama33` | `$CEREBRAS_API_KEY` | yes | 1M tok/day |
-| NVIDIA NIM | `fr-nim-llama33` | `$NVIDIA_NIM_API_KEY` | no | |
-| DeepInfra | `fr-deepinfra-llama33` | `$DEEPINFRA_API_KEY` | yes | |
-| Mistral | `fr-mistral-small` | `$MISTRAL_API_KEY` | yes | |
-| SiliconFlow | `fr-siliconflow-qwen` | `$SILICONFLOW_API_KEY` | yes | free after KYC |
-| LLM7 | `fr-llm7` | — (keyless) | no | no signup |
+| Strategy | Description |
+|----------|-------------|
+| `priority` | Requested provider first, then rest by config order |
+| `round-robin` | Cycle through providers evenly |
+| `random` | Pick a random provider, then fallback |
+| `cost` | Prefer cheapest (by `costPer1MTokens`) |
+| `latency` | Prefer fastest (by `avgE2ELatencyMs`) |
+| `lkgp` | Last Known Good Provider first, then fallback |
 
-> Model ids change over time — verify on each provider's dashboard. `examples/free-router.json`
-> shows a ready-to-enable subset.
+---
 
-### Unified `fr-auto` model
-There is also a single **`fr-auto`** model. Select it and the gateway fans the request
-across **all enabled providers** (OmniRoute's `auto` equivalent) — preferring tool-capable
-providers when the request includes tools, and falling back on any failure/rate-limit. Use
-`fr-auto` as your one default instead of picking a specific provider.
+## Circuit breaker
 
-## Development / testing (no Pi needed)
+Every provider has a circuit breaker with states:
 
-The gateway is dependency-free and Pi-agnostic, so it can be tested standalone:
+```
+CLOSED  →  DEGRADED  →  OPEN  →  HALF_OPEN  →  CLOSED
+  │          │           │            │
+  normal    warning    refused     probing recovery
+```
+
+- **CLOSED**: Normal operation, requests pass through
+- **DEGRADED**: Elevated failure rate, requests still pass but warnings logged
+- **OPEN**: Requests short-circuited, provider skipped
+- **HALF_OPEN**: After cooldown, probe requests allowed to test recovery
+
+Kind-aware cooldown: `rate_limit` (60s) vs `quota_exhausted` (5min) vs `transient` (30s).
+Exponential backoff on repeated open cycles (up to 16x base timeout).
+
+Reset with `/free-router-reset <providerId>` or `/free-router-reset all`.
+
+---
+
+## API endpoints (standalone)
+
+The gateway speaks the OpenAI API. Test without Pi:
 
 ```bash
-bun smoke.ts
-# another shell:
+# List models
+curl http://127.0.0.1:8731/v1/models
+
+# Chat (non-streaming)
 curl -s http://127.0.0.1:8731/v1/chat/completions \
   -H 'content-type: application/json' \
-  -d '{"model":"fr-pollinations-fast","messages":[{"role":"user","content":"say hi in 3 words"}],"stream":false}'
+  -d '{"model":"fr-auto","messages":[{"role":"user","content":"say hi"}],"stream":false}'
+
+# Chat (streaming)
+curl -s http://127.0.0.1:8731/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -d '{"model":"fr-llm7","messages":[{"role":"user","content":"count to 5"}],"stream":true}'
+
+# Health / stats
+curl http://127.0.0.1:8731/v1/stats
+curl http://127.0.0.1:8731/healthz
+
+# Reset a circuit breaker
+curl -X POST http://127.0.0.1:8731/v1/reset-breaker \
+  -H 'content-type: application/json' \
+  -d '{"providerId": "groq"}'
 ```
 
 ---
 
-## Resilience
+## What's ported from OmniRoute vs intentionally excluded
 
-- **Circuit breaker / cooldown**: a provider that fails (429 / 5xx / timeout / network /
-  error-as-200) is skipped for `cooldownMs` (default 60s) and retried afterwards. Live state:
-  `curl http://127.0.0.1:8731/v1/stats` or the in-Pi `/free-router-status` command.
-- **Fallback**: the next provider in the pool is tried automatically — you never see the error.
+### Ported ✅
+- Pluggable routing strategies (6 strategies + registry)
+- Circuit breaker with CLOSED→DEGRADED→OPEN→HALF_OPEN (kind-aware, exponential backoff)
+- Retry-After aware cooldown
+- Combo system (named model chains + virtual auto combo)
+- Global fallback (last-resort provider)
+- SSE pass-through streaming (true streaming, not buffered)
+- Resilience tracing per request
+- Provider catalog (35+ free-tier providers from OmniRoute's 237)
+- Health / stats / breaker-reset endpoints
 
-## Limitations (vs full OmniRoute)
+### Intentionally excluded ❌
+- No `better-sqlite3` dashboard / UI (needs native build)
+- No MITM / TPROXY / TLS JA3 (needs native + root)
+- No Electron desktop app
+- No multi-account quota sharing
+- No OAuth / Web Cookie providers (those are OmniRoute-specific auth flows)
+- No token compression (RTK/Caveman — needs native or heavy libs)
+- No persistent DB (in-memory only — state resets on restart)
 
-Intentionally out of scope for v1 (these are what needed native builds / are overkill):
-- No `better-sqlite3` dashboard, MITM/TPROXY, TLS JA3 stealth, Electron, or multi-account quota-share.
-- Mid-stream fallback is impossible (a provider can't be swapped after tokens start); a
-  mid-stream failure surfaces an error Pi retries.
-- Most free models lack extended thinking → registered with `reasoning: false`.
-- Tool-call support is per-provider (`supportsTools`); non-tool providers have `tools` stripped.
-- **Upstream calls are made non-streaming and re-emitted as SSE to Pi.** This dodges a
-  runtime quirk (Bun's `fetch` streaming hangs on some free providers) and is uniform across
-  all providers. True pass-through streaming is future work — you still get streamed output in
-  Pi, just buffered per upstream response.
+---
 
-## Roadmap
-- [ ] JSON-file usage/quota tracking + "free tokens remaining" in status
-- [x] Circuit breaker / key cooldown on failure
-- [x] Routing strategies: `priority` / `round-robin` / `random`
-- [ ] Optional prompt compression (dedup/truncate tool outputs) before forwarding
+## Development
+
+```bash
+# The gateway can be tested standalone without Pi:
+cd ~/.pi/agent/extensions/pi-free-router
+node --loader ts-node/esm smoke.ts
+```
+
+See `gateway.ts` for the standalone module — zero Pi dependencies.
 
 ## License
+
 MIT
